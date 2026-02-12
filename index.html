@@ -26,6 +26,9 @@
     /* 隱藏橫向捲軸但保留功能 */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* 確保輸入框在 iOS 上顯示正常 */
+    input, select { -webkit-appearance: none; }
   </style>
 </head>
 <body class="bg-[#151716] text-white font-sans antialiased selection:bg-emerald-500/30">
@@ -38,12 +41,12 @@
     import { 
       Calendar, Ship, ChevronRight, Save, 
       CheckCircle2, ArrowRightLeft, AlertTriangle, Loader2, Copy, Lock,
-      Trophy, Medal, Frown, Ghost, RefreshCcw, Crown
+      Trophy, Medal, Frown, Ghost, RefreshCcw, Crown, UserPlus, X
     } from 'lucide-react';
 
     // --- 設定區 ---
     const API_URL = "https://script.google.com/macros/s/AKfycbzsj2ZpBYk3sqJAEgIhO86FqMI8MPbcw5yXkZ8Znjr8WTwiDRAF55bKLo-WiPuxcTs1/exec";
-    const LIFF_ID = "2009117946-3B0ycM46"; // 更新為新的 LIFF ID
+    const LIFF_ID = "2009117946-3B0ycM46";
 
     // 載入時的隨機標語
     const LOADING_MSGS = [
@@ -56,23 +59,30 @@
 
     const App = () => {
       const [activeTab, setActiveTab] = useState('signup');
-      const [leaderboardTab, setLeaderboardTab] = useState('attendance'); // 'attendance' | 'late'
+      const [leaderboardTab, setLeaderboardTab] = useState('attendance'); 
       
       const [profiles, setProfiles] = useState([]);
       const [practiceDates, setPracticeDates] = useState([]);
       
-      // 狀態：當前出席狀況 vs 初始載入狀況
+      // 狀態 1: 報名表 (可讀寫) - 對應 Attendance_Main
       const [attendance, setAttendance] = useState({});
       const [initialAttendance, setInitialAttendance] = useState({});
+
+      // 狀態 2: 實際打卡結果 (唯讀) - 對應 Attendance_Status_Calc (準時/遲到...)
+      const [realStatus, setRealStatus] = useState({});
 
       const [currentUser, setCurrentUser] = useState(null);
       const [proxyUser, setProxyUser] = useState(null);
       const [selectedDate, setSelectedDate] = useState('');
       const [loading, setLoading] = useState(true);
-      const [isRefreshing, setIsRefreshing] = useState(false); // 控制局部重新整理
+      const [isRefreshing, setIsRefreshing] = useState(false);
       const [errorMsg, setErrorMsg] = useState(null);
       const [isSaving, setIsSaving] = useState(false);
       const [toast, setToast] = useState(null);
+
+      // 註冊新用戶狀態
+      const [isRegistering, setIsRegistering] = useState(false);
+      const [newUserName, setNewUserName] = useState('');
 
       // 月份狀態
       const [selectedMonth, setSelectedMonth] = useState(null);
@@ -80,10 +90,8 @@
       // 綁定狀態
       const [bindingTarget, setBindingTarget] = useState(null);
 
-      // 載入訊息輪播索引
       const [msgIndex, setMsgIndex] = useState(0);
 
-      // 載入訊息輪播邏輯
       useEffect(() => {
         if (loading) {
           const interval = setInterval(() => {
@@ -93,7 +101,6 @@
         }
       }, [loading]);
 
-      // 初始化資料抓取函數
       const fetchData = async () => {
         try {
           const res = await fetch(`${API_URL}?action=getInitialData`);
@@ -105,11 +112,9 @@
         }
       };
 
-      // 初始化
       useEffect(() => {
         const init = async () => {
           try {
-            // 初始化 LIFF
             if (LIFF_ID && window.liff) {
               await window.liff.init({ liffId: LIFF_ID });
               if (!window.liff.isLoggedIn()) {
@@ -122,15 +127,19 @@
               ? (await window.liff.getProfile()).userId 
               : "MOCK_USER_ID";
             
-            // 抓取資料
             const data = await fetchData();
 
             setProfiles(data.profiles);
             setPracticeDates(data.dates);
             
+            // 設定報名狀態 (用於打勾)
             const attMap = data.attendanceMap || {};
             setAttendance(attMap);
             setInitialAttendance(JSON.parse(JSON.stringify(attMap)));
+
+            // 設定實際打卡狀態 (用於看板 Badge & 排行榜)
+            const checkInMap = data.checkInMap || {};
+            setRealStatus(checkInMap);
             
             if (data.dates.length > 0) {
               // 智慧預設日期
@@ -155,7 +164,6 @@
               
               setSelectedDate(bestDate);
 
-              // 初始化月份
               try {
                 const months = [...new Set(data.dates.map(d => {
                   const str = String(d);
@@ -171,7 +179,6 @@
               } catch (e) { console.error("Month init error", e); }
             }
 
-            // 自動登入
             const boundUser = data.profiles.find(p => p.lineId === userId);
             if (boundUser) {
               setCurrentUser(boundUser);
@@ -187,16 +194,17 @@
         init();
       }, []);
 
-      // 重新整理功能 (模組 B)
       const handleRefresh = async () => {
         setIsRefreshing(true);
         try {
           const data = await fetchData();
           setProfiles(data.profiles);
           setPracticeDates(data.dates);
-          const attMap = data.attendanceMap || {};
-          setAttendance(attMap);
-          setInitialAttendance(JSON.parse(JSON.stringify(attMap)));
+          
+          setAttendance(data.attendanceMap || {});
+          setInitialAttendance(JSON.parse(JSON.stringify(data.attendanceMap || {})));
+          setRealStatus(data.checkInMap || {}); // 更新打卡狀態
+
           showToast("資料已更新");
         } catch (err) {
           showToast("更新失敗");
@@ -205,7 +213,6 @@
         }
       };
 
-      // 綁定
       const handleBindUser = async (name) => {
         if (isSaving) return;
         setIsSaving(true);
@@ -227,7 +234,44 @@
         }
       };
 
-      // 判斷日期是否已鎖定
+      // 註冊新用戶
+      const handleRegister = async () => {
+        if (!newUserName.trim()) { alert("請輸入姓名"); return; }
+        setIsSaving(true);
+        try {
+          const userId = (LIFF_ID && window.liff) ? (await window.liff.getProfile()).userId : "MOCK_USER_ID";
+          
+          // 呼叫後端註冊
+          await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'register', name: newUserName.trim(), lineId: userId })
+          });
+
+          showToast(`註冊成功！歡迎 ${newUserName}`);
+          
+          // 重新抓取資料
+          const data = await fetchData();
+          setProfiles(data.profiles);
+          setPracticeDates(data.dates);
+          setAttendance(data.attendanceMap || {});
+          setInitialAttendance(JSON.parse(JSON.stringify(data.attendanceMap || {})));
+          
+          // 自動登入
+          const newUser = data.profiles.find(p => p.name === newUserName.trim());
+          if (newUser) {
+            setCurrentUser(newUser);
+            setProxyUser(newUser);
+          }
+          setIsRegistering(false);
+          
+        } catch (err) {
+          console.error(err);
+          alert("註冊失敗，請確認後端是否更新");
+        } finally {
+          setIsSaving(false);
+        }
+      };
+
       const isDateLocked = (dateStr) => {
         try {
           const today = new Date();
@@ -241,7 +285,6 @@
         } catch (e) { return false; }
       };
 
-      // 檢查變更
       const hasUnsavedChanges = useMemo(() => {
         if (!proxyUser) return false;
         return practiceDates.some(date => {
@@ -252,7 +295,6 @@
         });
       }, [attendance, initialAttendance, proxyUser, practiceDates]);
 
-      // 儲存
       const handleUpdate = async () => {
         setIsSaving(true);
         try {
@@ -270,13 +312,12 @@
         finally { setIsSaving(false); }
       };
 
-      // 複製到 Excel (模組 C)
+      // 修正：複製 Excel (移除鎖定字樣)
       const handleCopyExcel = () => {
         const { Left, Right, Staff } = dashboardStats.manifest;
         const maxLen = Math.max(Left.length, Right.length, Staff.length);
-        const lockedStatus = isDateLocked(selectedDate) ? "(鎖定)" : "";
         
-        let text = `${selectedDate}${lockedStatus}\n\n`; // 標題 + 空行
+        let text = `${selectedDate}\n\n`; // 只顯示日期，不加鎖定
         
         for(let i=0; i<maxLen; i++) {
           const l = Left[i] ? Left[i].name : "";
@@ -288,7 +329,7 @@
         const doCopy = (txt) => {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(txt)
-                    .then(() => showToast("名單已複製 (可直接貼上 Excel)"))
+                    .then(() => showToast("名單已複製"))
                     .catch(() => fallbackCopy(txt));
             } else { fallbackCopy(txt); }
         };
@@ -311,9 +352,8 @@
       const toggleAttendance = (date) => {
         if (isDateLocked(date)) return;
         const key = `${proxyUser.name}_${date}`;
-        // 簡單邏輯：點擊切換 參加 <-> 不參加
-        // 如果原本是 '準時' 或 '遲到'，切換後也會變成 '不參加'
         const currentVal = attendance[key];
+        // 只要不是 '不參加' 或 undefined，就視為已參加，點擊則取消
         const isAttending = ['參加', '準時', '遲到'].includes(currentVal);
         setAttendance(prev => ({ ...prev, [key]: isAttending ? '不參加' : '參加' }));
       };
@@ -321,11 +361,6 @@
       const showToast = (msg) => {
         setToast(msg);
         setTimeout(() => setToast(null), 3000);
-      };
-
-      // 輔助函式：判斷是否視為出席 (模組 B 邏輯)
-      const isConsideredAttending = (status) => {
-        return ['參加', '準時', '遲到'].includes(status);
       };
 
       const availableMonths = useMemo(() => {
@@ -346,10 +381,30 @@
         });
       }, [selectedMonth, practiceDates]);
 
-      // 看板統計 (模組 B)
+      // 輔助函式：取得該使用者在該日期的「最終顯示狀態」
+      // 優先權：realStatus (準時/遲到) > attendance (參加)
+      const getFinalStatus = (name, date) => {
+        const key = `${name}_${date}`;
+        // 先看計算表有沒有結果
+        const calculated = realStatus[key];
+        if (calculated && calculated !== '不參加') return calculated;
+        
+        // 沒有的話看報名表
+        const registered = attendance[key];
+        return registered || '不參加'; // 若 undefined 視為不參加
+      };
+
+      // 判斷是否出現在看板上 (參加, 準時, 遲到)
+      const isConsideredAttending = (status) => {
+        return ['參加', '準時', '遲到', '未打卡'].includes(status);
+      };
+
       const dashboardStats = useMemo(() => {
-        // 篩選出所有狀態為 參加/準時/遲到 的人
-        const attendees = profiles.filter(p => isConsideredAttending(attendance[`${p.name}_${selectedDate}`]));
+        const attendees = profiles.filter(p => {
+          const status = getFinalStatus(p.name, selectedDate);
+          return isConsideredAttending(status);
+        });
+        
         const male = attendees.filter(p => p.gender === '男').length;
         const female = attendees.filter(p => p.gender === '女').length;
         const manifest = {
@@ -358,62 +413,62 @@
           Staff: attendees.filter(p => p.position && (p.position.includes('舵') || p.position.includes('鼓'))),
         };
         return { total: attendees.length, male, female, manifest };
-      }, [selectedDate, attendance, profiles]);
+      }, [selectedDate, attendance, realStatus, profiles]);
 
-      // 排行榜統計 (模組 A)
+      // 修正：排行榜邏輯 (使用 realStatus 計算)
       const leaderboardData = useMemo(() => {
         const stats = profiles.map(p => {
           let attendCount = 0;
           let lateCount = 0;
           
           practiceDates.forEach(date => {
-            // 僅計算已鎖定(過去)的日期
+            // 只有鎖定的日期才算入排行榜
             if (isDateLocked(date)) {
-              const status = attendance[`${p.name}_${date}`];
+              // 使用 realStatus，因為排行榜看的是「實際打卡結果」
+              // 但若 realStatus 沒資料 (例如早期沒用這個表)，則 fallback 到 attendance
+              const status = getFinalStatus(p.name, date);
               
-              // 全隊出席榜：準時 + 遲到 + 參加
-              if (['參加', '準時', '遲到'].includes(status)) {
-                attendCount++;
-              }
-              
-              // 遲到榜：遲到 + 未打卡(這裡假設未打卡需要另外判斷，但目前以前端資料為主，先抓"遲到")
-              // 如果系統有記錄 '未打卡' 字串也可加入。目前邏輯以 '遲到' 為主。
-              if (status === '遲到') {
-                lateCount++;
-              }
+              if (['參加', '準時', '遲到'].includes(status)) attendCount++;
+              if (status === '遲到') lateCount++;
             }
           });
           return { name: p.name, attendCount, lateCount };
         });
 
-        // 排序與名次計算
-        const sortAndRank = (data, key) => {
+        const calculateRank = (data, key) => {
+          // 只保留分數 > 0 的人進行排名 (可選)
           const sorted = [...data].sort((a, b) => b[key] - a[key]);
-          let rank = 1;
+          
+          let currentRank = 1;
           return sorted.map((item, index) => {
+            // 如果分數比前一名低，名次變成當前 index+1 (1, 1, 3 排名法)
             if (index > 0 && item[key] < sorted[index - 1][key]) {
-              rank = index + 1; // Dense Ranking (1, 1, 3) 或是 (1, 1, 2)
-              // 題目要求 "名次並列"。通常若有兩人第一，第三人為第三名。
-              // 若要實作 1, 1, 2 (Dense Rank)，則: if val < prevVal then currentRank++
-              // 這裡採用標準比賽排名 (1, 1, 3) 較為常見，若需 1, 1, 2 請改用 currentRank 變數累加
+              currentRank = index + 1;
             }
-             // 這裡改用 Dense Ranking (1, 1, 2) 邏輯，比較適合團隊激勵
-            return { ...item, rank: index > 0 && item[key] === sorted[index-1][key] ? sorted[index-1].rank : (index > 0 ? sorted[index-1].rank + 1 : 1) }; 
+            return { ...item, rank: currentRank };
           });
         };
 
+        const lateRanked = calculateRank(stats, 'lateCount')
+          .filter(item => item.lateCount > 0)
+          .slice(0, 5);
+
+        // 出席榜顯示所有人 (或者也可只顯示 > 0)
+        const attendRanked = calculateRank(stats, 'attendCount')
+          .filter(item => item.attendCount > 0);
+
         return {
-          attendance: sortAndRank(stats, 'attendCount'),
-          late: sortAndRank(stats, 'lateCount').slice(0, 5) // Top 5
+          attendance: attendRanked,
+          late: lateRanked
         };
-      }, [profiles, practiceDates, attendance]);
+      }, [profiles, practiceDates, attendance, realStatus]);
 
 
       // --- 渲染元件 ---
 
-      // 狀態 Badge 元件 (模組 B)
+      // 狀態 Badge 元件 (修正狀態顯示)
       const StatusBadge = ({ name }) => {
-        const status = attendance[`${name}_${selectedDate}`];
+        const status = getFinalStatus(name, selectedDate);
         
         if (status === '準時') {
           return (
@@ -431,16 +486,15 @@
             </div>
           );
         }
-        // 預設 (參加)
+        // 如果是「參加」(未來日期或無打卡資料)
         return (
-          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500/20 rounded-md border border-emerald-500/30">
+          <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500/10 rounded-md border border-emerald-500/20 opacity-80">
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-            <span className="text-xs font-bold text-emerald-400">出席</span>
+            <span className="text-xs font-bold text-emerald-400">已報名</span>
           </div>
         );
       };
 
-      // 1. Loading 畫面
       if (loading) return (
         <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#151716] relative overflow-hidden">
           <div className="flex-1 flex flex-col items-center justify-center w-full px-8 space-y-10 -mt-16">
@@ -469,26 +523,64 @@
 
       // --- 身分認領畫面 ---
       if (!currentUser) return (
-        <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="min-h-screen flex items-center justify-center p-6 pb-20">
           <div className="w-full max-w-md bg-[#171C1A] border border-emerald-900/50 rounded-2xl p-8 shadow-2xl">
-            <h1 className="text-2xl font-bold text-center mb-6">身分認領</h1>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {profiles.map(p => (
+            {isRegistering ? (
+              <div className="animate-in fade-in slide-in-from-right duration-300">
+                <div className="flex items-center gap-2 mb-6">
+                  <button onClick={() => setIsRegistering(false)} className="p-1 rounded-lg hover:bg-[#2d3a35] transition-colors"><ChevronRight className="w-6 h-6 rotate-180 text-gray-400" /></button>
+                  <h1 className="text-xl font-bold">註冊新隊員</h1>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 mb-2 block">姓名 (請輸入真實姓名)</label>
+                    <input 
+                      type="text" 
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder="王小明"
+                      className="w-full bg-[#0d1f18] border border-emerald-900/50 rounded-xl px-4 py-3 font-bold focus:outline-none focus:border-emerald-500 transition-all placeholder:text-gray-700"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleRegister} 
+                    disabled={isSaving || !newUserName.trim()}
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-[#0a1a12] rounded-xl font-black shadow-lg disabled:opacity-50 disabled:grayscale transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
+                    確認註冊
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="animate-in fade-in slide-in-from-left duration-300">
+                <h1 className="text-2xl font-bold text-center mb-6">身分認領</h1>
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto mb-4">
+                  {profiles.map(p => (
+                    <button 
+                      key={p.name} 
+                      onClick={() => handleBindUser(p.name)} 
+                      disabled={isSaving}
+                      className={`w-full p-4 bg-[#0d1f18] border border-emerald-900/30 rounded-xl text-left flex justify-between items-center group transition-all ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:border-emerald-500/50'}`}
+                    >
+                      <span className="font-bold">{p.name}</span>
+                      {isSaving && bindingTarget === p.name ? (
+                        <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-emerald-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
                 <button 
-                  key={p.name} 
-                  onClick={() => handleBindUser(p.name)} 
-                  disabled={isSaving}
-                  className={`w-full p-4 bg-[#0d1f18] border border-emerald-900/30 rounded-xl text-left flex justify-between items-center group transition-all ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:border-emerald-500/50'}`}
+                  onClick={() => setIsRegistering(true)}
+                  className="w-full py-3 mt-2 border border-emerald-900/30 rounded-xl text-emerald-500 font-bold text-sm hover:bg-[#0d1f18] transition-colors flex items-center justify-center gap-2"
                 >
-                  <span className="font-bold">{p.name}</span>
-                  {isSaving && bindingTarget === p.name ? (
-                    <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-emerald-500" />
-                  )}
+                  <UserPlus className="w-4 h-4" />
+                  找不到名字？註冊新隊員
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -539,7 +631,6 @@
                 <div className="space-y-3">
                   {filteredDates.length === 0 && <div className="text-center text-gray-500 py-4">本月無行程</div>}
                   {filteredDates.map(date => {
-                    // 只要有 參加/準時/遲到 都算是有勾選
                     const isAttending = ['參加', '準時', '遲到'].includes(attendance[`${proxyUser.name}_${date}`]);
                     const locked = isDateLocked(date);
 
@@ -642,7 +733,7 @@
                   </button>
                 </div>
 
-                <div className="bg-[#171C1A] border border-emerald-900/30 rounded-2xl overflow-hidden">
+                <div className="bg-[#171C1A] border border-emerald-900/30 rounded-2xl overflow-hidden min-h-[300px]">
                   <div className="p-4 bg-[#0d1f18] border-b border-emerald-900/30 flex justify-between items-center">
                     <h3 className={`font-bold ${leaderboardTab === 'attendance' ? 'text-emerald-500' : 'text-orange-500'}`}>
                       {leaderboardTab === 'attendance' ? '出席榮譽榜' : '遲到排行榜 (Top 5)'}
@@ -651,11 +742,23 @@
                   </div>
                   
                   {leaderboardData[leaderboardTab].length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">目前沒有數據</div>
+                    <div className="p-12 flex flex-col items-center justify-center text-center space-y-4">
+                      {leaderboardTab === 'late' ? (
+                        <>
+                          <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mb-2">
+                             <Crown className="w-8 h-8 text-emerald-500" />
+                          </div>
+                          <div className="text-xl font-bold text-emerald-400">目前無人遲到！</div>
+                          <div className="text-sm text-gray-500">大家都很準時，請繼續保持 👍</div>
+                        </>
+                      ) : (
+                        <div className="text-gray-500">目前沒有數據</div>
+                      )}
+                    </div>
                   ) : (
                     <div>
                       {leaderboardData[leaderboardTab].map((item, idx) => {
-                        let rankColor = 'bg-[#2A2F2D] text-gray-400'; // Default > 3
+                        let rankColor = 'bg-[#2A2F2D] text-gray-400'; 
                         let Icon = null;
                         
                         if (leaderboardTab === 'attendance') {
@@ -663,14 +766,13 @@
                           else if (item.rank === 2) { rankColor = 'bg-gray-300 text-black'; Icon = Medal; }
                           else if (item.rank === 3) { rankColor = 'bg-amber-700 text-white'; Icon = Medal; }
                         } else {
-                          // 遲到榜統一橘色系
                           rankColor = 'bg-orange-500 text-black';
                         }
 
                         return (
                           <div key={item.name} className="flex items-center justify-between p-4 border-b border-emerald-900/10 last:border-0 hover:bg-[#1a201e]">
                             <div className="flex items-center gap-4">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${rankColor}`}>
+                              <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-black text-sm ${rankColor}`}>
                                 {item.rank}
                               </div>
                               <div className="font-bold text-base">{item.name}</div>
