@@ -452,6 +452,47 @@
         } catch (e) { return false; }
       };
 
+      const getFinalStatus = (name, date) => {
+        const key = `${name}_${date}`;
+        const calculated = realStatus[key];
+        if (calculated && calculated !== '不參加') return calculated;
+        const registered = attendance[key];
+        return registered || '不參加';
+      };
+
+      // --- 代理人摘要統計 (下次練船、報名次數、參與次數) ---
+      const proxyUserStats = useMemo(() => {
+        if (!proxyUser || !practiceDates) return { nextDate: '無', registered: 0, participated: 0 };
+        
+        let nextDate = '無';
+        let registered = 0;
+        let participated = 0;
+
+        for (const date of practiceDates) {
+          // 報名次數：只要在報名表裡標記為「參加」、「準時」或「遲到」皆算
+          const attVal = attendance[`${proxyUser.name}_${date}`];
+          if (['參加', '準時', '遲到'].includes(attVal)) {
+            registered++;
+          }
+
+          if (isDateLocked(date)) {
+             // 參與次數：針對已鎖定(過去)的日期，看實際打卡狀態
+             const finalStatus = getFinalStatus(proxyUser.name, date);
+             if (['參加', '準時', '遲到'].includes(finalStatus)) {
+               participated++;
+             }
+          } else {
+             // 只有在還未指定下次練船日期，且該隊員確實有「報名」該日期時，才寫入下次練船日
+             if (nextDate === '無' && ['參加', '準時', '遲到'].includes(attVal)) {
+               nextDate = date;
+             }
+          }
+        }
+
+        return { nextDate, registered, participated };
+      }, [proxyUser, practiceDates, attendance, realStatus]);
+
+
       const hasUnsavedChanges = useMemo(() => {
         if (!proxyUser) return false;
         return practiceDates.some(date => {
@@ -536,14 +577,6 @@
         });
       }, [selectedMonth, practiceDates]);
 
-      const getFinalStatus = (name, date) => {
-        const key = `${name}_${date}`;
-        const calculated = realStatus[key];
-        if (calculated && calculated !== '不參加') return calculated;
-        const registered = attendance[key];
-        return registered || '不參加';
-      };
-
       const dashboardStats = useMemo(() => {
         // 包括所有報名或有打卡紀錄的人，讓他們維持在原位（左右槳/工作人員）
         const allBoardMembers = profiles.filter(p => {
@@ -623,7 +656,7 @@
           return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
         }
         if (status === '缺席' || status === '請假') {
-          // 為確保相容性，這裡使用通用的 X 並手動組合出圓圈，避免依賴特定版本的 XCircle 造成載入失敗
+          // 為確保相容性，這裡使用通用的 X 並手動組合出圓圈
           return (
             <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-red-500">
               <X className="w-3 h-3 text-red-500 stroke-[3px]" />
@@ -757,13 +790,26 @@
             {activeTab === 'signup' && (
               <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
                 <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/30 mb-8">
-                  <label className="text-[10px] font-bold text-emerald-500 uppercase block mb-2">代理人模式 (切換身份)</label>
-                  <div className="relative">
+                  <div className="relative mb-3">
                     <select value={proxyUser.name} onChange={(e) => setProxyUser(profiles.find(p => p.name === e.target.value))} className="w-full bg-[#0d1f18] border border-emerald-900/50 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none appearance-none">
                       {profiles.map(p => <option key={p.name} value={p.name}>{p.name}{p.name === currentUser.name ? ' (本人)' : ''}</option>)}
                     </select>
                     <ArrowRightLeft className="absolute right-4 top-3.5 w-4 h-4 text-emerald-500/50 pointer-events-none" />
                   </div>
+                  
+                  {/* 新增的代理人摘要統計區塊 */}
+                  {proxyUser && (
+                    <div className="bg-[#0d1f18]/50 rounded-xl p-3 border border-emerald-900/20 text-xs text-gray-400 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>你的下次訓練：<span className="text-emerald-400 font-bold">{proxyUserStats.nextDate}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Ship className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>今年已訓練 <span className="text-emerald-400 font-bold">{proxyUserStats.participated}</span> 次，目前報名出席 <span className="text-emerald-400 font-bold">{proxyUserStats.registered}</span> 次</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 月份 Tabs */}
