@@ -82,7 +82,7 @@
       CheckCircle2, ArrowRightLeft, AlertTriangle, Loader2, Copy, Lock,
       Trophy, Medal, Frown, Ghost, RefreshCcw, Crown, UserPlus, X,
       Coins, Hand, Sparkles, ChevronDown, Zap,
-      Diamond, Award, Shield, Flame, XCircle
+      Diamond, Award, Shield, Flame
     } from 'lucide-react';
 
     // --- 設定區 ---
@@ -260,8 +260,8 @@
         }
       }, [loading]);
 
-      // 計算距離端午節 (6/19) 的天數
-      const daysToDragonBoat = useMemo(() => {
+      // 計算距離端午節 (6/19) 的週數
+      const weeksToDragonBoat = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const currentYear = today.getFullYear();
@@ -272,7 +272,7 @@
         }
         
         const diffTime = targetDate.getTime() - today.getTime();
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
       }, []);
 
       const fetchData = async () => {
@@ -623,7 +623,12 @@
           return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
         }
         if (status === '缺席' || status === '請假') {
-          return <XCircle className="w-5 h-5 text-red-500" />;
+          // 為確保相容性，這裡使用通用的 X 並手動組合出圓圈，避免依賴特定版本的 XCircle 造成載入失敗
+          return (
+            <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-red-500">
+              <X className="w-3 h-3 text-red-500 stroke-[3px]" />
+            </div>
+          );
         }
         return null; // 未打卡或空值不顯示圖示
       };
@@ -639,9 +644,9 @@
                </svg>
                
                {/* 倒數計時 */}
-               <div className="text-center mt-8 animate-pop-in" style={{animationDelay: '0.2s'}}>
-                 <p className="text-sm font-bold tracking-widest text-emerald-400 drop-shadow-md">
-                   距離端午節剩下 <span className="text-3xl text-yellow-400 mx-1 font-black">{daysToDragonBoat}</span> 天
+               <div className="text-center mt-6 animate-pop-in" style={{animationDelay: '0.2s'}}>
+                 <p className="text-sm tracking-widest text-[#C4F0ED]">
+                   距離端午節剩下 <span className="text-lg font-bold mx-1">{weeksToDragonBoat}</span> 週
                  </p>
                </div>
             </div>
