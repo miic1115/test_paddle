@@ -62,6 +62,12 @@
       -webkit-text-fill-color: transparent;
       animation: shine 3s linear infinite;
     }
+
+    /* --- 3D 翻牌動畫與效果 --- */
+    .perspective-1000 { perspective: 1000px; }
+    .transform-style-3d { transform-style: preserve-3d; }
+    .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .rotate-y-180 { transform: rotateY(180deg); }
   </style>
 </head>
 <body class="bg-[#151716] text-white font-sans antialiased selection:bg-emerald-500/30">
@@ -75,11 +81,12 @@
       Calendar, Ship, ChevronRight, Save, 
       CheckCircle2, ArrowRightLeft, AlertTriangle, Loader2, Copy, Lock,
       Trophy, Medal, Frown, Ghost, RefreshCcw, Crown, UserPlus, X,
-      Coins, Hand, Sparkles, ChevronDown, Zap
+      Coins, Hand, Sparkles, ChevronDown, Zap,
+      Diamond, Award, Shield, Flame
     } from 'lucide-react';
 
     // --- 設定區 ---
-    const API_URL = "https://script.google.com/macros/s/AKfycbwRRsL0NVRsOAZQMvKlBC8r4CUejHgSjEIkqTJeTSdS6H3-zP9dUX_0SdOfMMuKF_Tf/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbyxyH7Yavad0qjk5O1Da2f0B2C4TJylmZmDmWbNRpz7b_KhbU0y4mvqAM2d0pDKxbSX/exec";
     const LIFF_ID = "2009117946-3B0ycM46";
 
     // 載入時的隨機標語
@@ -141,58 +148,69 @@
       return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />;
     };
 
-    // --- 獨立元件：質感集氣按鈕 (SVG Ring) ---
-    const ChargeButton = ({ onClick, progress, theme, icon: Icon }) => {
-      const radius = 56;
-      const stroke = 4;
-      const normalizedRadius = radius - stroke * 2;
-      const circumference = normalizedRadius * 2 * Math.PI;
-      const strokeDashoffset = circumference - (progress / 100) * circumference;
+    // --- 3D 抽卡翻牌元件 (高級塔羅牌/向量插圖風格) ---
+    const FlipCard = ({ rank, player, isFlipped, onFlip, delay }) => {
+      const getRankTheme = (r) => {
+        if (r === 1) return {
+            primary: "border-yellow-500/50",
+            bg: "bg-gradient-to-b from-[#1a1813] to-[#0D1210]",
+            text: "text-yellow-400",
+            glow: "shadow-[0_0_20px_rgba(250,204,21,0.15)]",
+            icon: <Crown className="w-10 h-10 text-yellow-500 drop-shadow-md mb-2" />
+        };
+        if (r === 2) return {
+            primary: "border-slate-300/40",
+            bg: "bg-gradient-to-b from-[#16181a] to-[#0D1210]",
+            text: "text-slate-300",
+            glow: "shadow-[0_0_15px_rgba(203,213,225,0.1)]",
+            icon: <Medal className="w-9 h-9 text-slate-300 drop-shadow-md mb-2" />
+        };
+        return {
+            primary: "border-amber-600/50",
+            bg: "bg-gradient-to-b from-[#1a1410] to-[#0D1210]",
+            text: "text-amber-500",
+            glow: "shadow-[0_0_15px_rgba(217,119,6,0.1)]",
+            icon: <Award className="w-9 h-9 text-amber-600 drop-shadow-md mb-2" />
+        };
+      };
+
+      const theme = getRankTheme(rank);
+      
+      // 塔羅牌幾何星盤向量暗紋
+      const tarotPattern = `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 50m-40 0a40 40 0 1 0 80 0a40 40 0 1 0 -80 0' fill='none' stroke='rgba(255,255,255,0.05)' stroke-width='0.5'/%3E%3Cpath d='M50 10L50 90M10 50L90 50' stroke='rgba(255,255,255,0.05)' stroke-width='0.5'/%3E%3Ccircle cx='50' cy='50' r='20' fill='none' stroke='rgba(255,255,255,0.05)' stroke-width='0.5'/%3E%3C/svg%3E")`;
 
       return (
-        <div className="relative flex items-center justify-center">
-          {/* 呼吸光暈 (背景) */}
-          <div className={`absolute w-32 h-32 rounded-full ${theme.glow} blur-2xl opacity-20 animate-pulse-ring`} />
-          
-          {/* 按鈕本體 */}
-          <button 
-            onClick={onClick}
-            className="relative w-32 h-32 rounded-full flex items-center justify-center bg-[#151716] shadow-2xl active:scale-95 transition-transform duration-100 group"
-          >
-            {/* SVG 進度環 */}
-            <svg height={radius * 2} width={radius * 2} className="-rotate-90 absolute">
-              {/* 底環 */}
-              <circle
-                stroke="#2a2f2d"
-                strokeWidth={stroke}
-                fill="transparent"
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-              />
-              {/* 進度環 */}
-              <circle
-                stroke="currentColor"
-                className={`transition-all duration-300 ease-out ${progress >= 100 ? 'text-white' : theme.ring}`}
-                strokeWidth={stroke}
-                strokeDasharray={circumference + ' ' + circumference}
-                style={{ strokeDashoffset }}
-                strokeLinecap="round"
-                fill="transparent"
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-              />
-            </svg>
-
-            {/* 中心 Icon */}
-            <div className="flex flex-col items-center gap-1 z-10">
-              <Icon className={`w-8 h-8 transition-colors duration-300 ${progress >= 100 ? 'text-white' : theme.icon}`} />
-              <span className={`text-[10px] font-black tracking-widest uppercase transition-colors duration-300 ${progress >= 100 ? 'text-white' : 'text-gray-500'}`}>
-                {progress >= 100 ? 'READY' : `${Math.round(progress)}%`}
-              </span>
+        <div className={`relative w-full aspect-[2/3.2] cursor-pointer perspective-1000 animate-pop-in`} style={{ animationDelay: delay }} onClick={onFlip}>
+          <div className={`w-full h-full transition-transform duration-[800ms] transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
+            
+            {/* 卡牌正面 (尚未翻開) */}
+            <div className={`absolute inset-0 backface-hidden bg-[#0D1210] border border-emerald-700/40 rounded-lg flex flex-col items-center justify-center shadow-xl overflow-hidden transition-opacity duration-300 ${isFlipped ? 'opacity-0' : 'opacity-100'}`}>
+               <div className="absolute inset-1 border border-emerald-600/20 rounded-md"></div>
+               <div className="absolute inset-2.5 border border-emerald-600/10 rounded-sm"></div>
+               <div className="absolute inset-0" style={{ backgroundImage: tarotPattern, backgroundSize: '50px 50px' }}></div>
+               
+               <div className="w-12 h-12 flex items-center justify-center relative z-10">
+                  <div className="absolute inset-0 rotate-45 border border-emerald-500/30"></div>
+                  <div className="absolute inset-0 border border-emerald-500/30"></div>
+                  <Sparkles className="w-5 h-5 text-emerald-500/70 animate-pulse" />
+               </div>
             </div>
-          </button>
+
+            {/* 卡牌反面 (翻開後顯示玩家) */}
+            <div className={`absolute inset-0 backface-hidden rotate-y-180 border ${theme.primary} rounded-lg flex flex-col items-center justify-center overflow-hidden ${theme.bg} ${theme.glow}`}>
+               <div className={`absolute inset-1.5 border ${theme.primary} opacity-40 rounded-md`}></div>
+               <div className="absolute inset-0" style={{ backgroundImage: tarotPattern, backgroundSize: '80px 80px' }}></div>
+               
+               <div className="relative z-10 flex flex-col items-center w-full px-2">
+                 {theme.icon}
+                 <div className={`text-xs font-black truncate w-full text-center tracking-widest ${theme.text}`}>{player.name}</div>
+                 <div className="w-6 h-[1px] bg-white/20 my-2"></div>
+                 <div className={`text-2xl font-serif font-black ${theme.text}`}>{player.attendCount}</div>
+                 <div className="text-[8px] text-white/40 uppercase tracking-widest mt-1">Attend</div>
+               </div>
+            </div>
+
+          </div>
         </div>
       );
     };
@@ -201,9 +219,7 @@
       const [activeTab, setActiveTab] = useState('signup');
       
       // 排行榜狀態
-      const [leaderboardTab, setLeaderboardTab] = useState('attendance'); 
-      const [energy, setEnergy] = useState(0);
-      const [unlockedStatus, setUnlockedStatus] = useState({ attendance: false, sponsor: false });
+      const [flippedCards, setFlippedCards] = useState({ 0: false, 1: false, 2: false });
       const [showConfetti, setShowConfetti] = useState(false);
 
       const [profiles, setProfiles] = useState([]);
@@ -234,20 +250,6 @@
       const [bindingTarget, setBindingTarget] = useState(null);
       const [msgIndex, setMsgIndex] = useState(0);
 
-      // 排行榜顏色主題
-      const THEMES = {
-        attendance: {
-          glow: 'bg-emerald-500',
-          ring: 'text-emerald-500',
-          icon: 'text-emerald-500 group-hover:text-emerald-400'
-        },
-        sponsor: {
-          glow: 'bg-orange-500',
-          ring: 'text-orange-500',
-          icon: 'text-orange-500 group-hover:text-orange-400'
-        }
-      };
-
       // 載入訊息輪播
       useEffect(() => {
         if (loading) {
@@ -258,11 +260,20 @@
         }
       }, [loading]);
 
-      // 排行榜集氣重置邏輯：切換 Tab 時歸零能量，但不重置解鎖狀態
-      useEffect(() => {
-        setEnergy(0);
-        setShowConfetti(false);
-      }, [leaderboardTab]);
+      // 計算距離端午節 (6/19) 的週數
+      const weeksToDragonBoat = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const currentYear = today.getFullYear();
+        let targetDate = new Date(currentYear, 5, 19); // 6月份 (index 為 5)
+        
+        if (today > targetDate) {
+          targetDate = new Date(currentYear + 1, 5, 19);
+        }
+        
+        const diffTime = targetDate.getTime() - today.getTime();
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
+      }, []);
 
       const fetchData = async () => {
         try {
@@ -428,25 +439,6 @@
         }
       };
 
-      // Handler: 集氣按鈕
-      const handleCharge = () => {
-        if (unlockedStatus[leaderboardTab]) return;
-        if (navigator.vibrate) navigator.vibrate(30);
-
-        const newEnergy = Math.min(energy + 20, 100);
-        setEnergy(newEnergy);
-
-        if (newEnergy >= 100) {
-          if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
-          setTimeout(() => {
-            setUnlockedStatus(prev => ({ ...prev, [leaderboardTab]: true }));
-            setShowConfetti(true);
-            setTimeout(() => setShowConfetti(false), 3000);
-          }, 300);
-        }
-      };
-
-      // 檢查日期是否鎖定（<=今天）
       const isDateLocked = (dateStr) => {
         try {
           const today = new Date();
@@ -460,20 +452,46 @@
         } catch (e) { return false; }
       };
 
-      // ★ 判斷日期是否嚴格為「過去」(昨天或更早)，用於缺席判定
-      const isDateStrictlyPast = (dateStr) => {
-        try {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const cleanDate = dateStr.split('(')[0];
-          const [m, d] = cleanDate.split('/').map(n => parseInt(n, 10));
-          const year = today.getFullYear();
-          const targetDate = new Date(year, m - 1, d);
-          if (today.getMonth() === 11 && m === 1) targetDate.setFullYear(year + 1);
-          if (today.getMonth() === 0 && m === 12) targetDate.setFullYear(year - 1);
-          return targetDate < today; // 嚴格小於今天
-        } catch (e) { return false; }
+      const getFinalStatus = (name, date) => {
+        const key = `${name}_${date}`;
+        const calculated = realStatus[key];
+        if (calculated && calculated !== '不參加') return calculated;
+        const registered = attendance[key];
+        return registered || '不參加';
       };
+
+      // --- 代理人摘要統計 (下次練船、報名次數、參與次數) ---
+      const proxyUserStats = useMemo(() => {
+        if (!proxyUser || !practiceDates) return { nextDate: '無', registered: 0, participated: 0 };
+        
+        let nextDate = '無';
+        let registered = 0;
+        let participated = 0;
+
+        for (const date of practiceDates) {
+          // 報名次數：只要在報名表裡標記為「參加」、「準時」或「遲到」皆算
+          const attVal = attendance[`${proxyUser.name}_${date}`];
+          if (['參加', '準時', '遲到'].includes(attVal)) {
+            registered++;
+          }
+
+          if (isDateLocked(date)) {
+             // 參與次數：針對已鎖定(過去)的日期，看實際打卡狀態
+             const finalStatus = getFinalStatus(proxyUser.name, date);
+             if (['參加', '準時', '遲到'].includes(finalStatus)) {
+               participated++;
+             }
+          } else {
+             // 只有在還未指定下次練船日期，且該隊員確實有「報名」該日期時，才寫入下次練船日
+             if (nextDate === '無' && ['參加', '準時', '遲到'].includes(attVal)) {
+               nextDate = date;
+             }
+          }
+        }
+
+        return { nextDate, registered, participated };
+      }, [proxyUser, practiceDates, attendance, realStatus]);
+
 
       const hasUnsavedChanges = useMemo(() => {
         if (!proxyUser) return false;
@@ -559,236 +577,110 @@
         });
       }, [selectedMonth, practiceDates]);
 
-      const getFinalStatus = (name, date) => {
-        const key = `${name}_${date}`;
-        const calculated = realStatus[key];
-        if (calculated && calculated !== '不參加') return calculated;
-        const registered = attendance[key];
-        return registered || '不參加';
-      };
-
-      const isConsideredAttending = (status) => {
-        return ['參加', '準時', '遲到', '未打卡', '缺席'].includes(status);
-      };
-
       const dashboardStats = useMemo(() => {
-        const attendees = profiles.filter(p => {
+        // 包括所有報名或有打卡紀錄的人，讓他們維持在原位（左右槳/工作人員）
+        const allBoardMembers = profiles.filter(p => {
           const status = getFinalStatus(p.name, selectedDate);
-          return isConsideredAttending(status);
+          return ['參加', '準時', '遲到', '未打卡', '缺席', '請假'].includes(status);
         });
-        const male = attendees.filter(p => p.gender === '男').length;
-        const female = attendees.filter(p => p.gender === '女').length;
+
+        // 實際有出席的人（排除缺席與請假），用來計算「總出席」與男女人數
+        const actualAttendees = allBoardMembers.filter(p => {
+          const status = getFinalStatus(p.name, selectedDate);
+          return !['缺席', '請假'].includes(status);
+        });
+
+        const male = actualAttendees.filter(p => p.gender === '男').length;
+        const female = actualAttendees.filter(p => p.gender === '女').length;
         const manifest = {
-          Left: attendees.filter(p => p.position && p.position.includes('左')),
-          Right: attendees.filter(p => p.position && p.position.includes('右')),
-          Staff: attendees.filter(p => p.position && (p.position.includes('舵') || p.position.includes('鼓'))),
+          Left: allBoardMembers.filter(p => p.position && p.position.includes('左')),
+          Right: allBoardMembers.filter(p => p.position && p.position.includes('右')),
+          Staff: allBoardMembers.filter(p => p.position && (p.position.includes('舵') || p.position.includes('鼓'))),
         };
-        return { total: attendees.length, male, female, manifest };
+        return { total: actualAttendees.length, male, female, manifest, list: allBoardMembers };
       }, [selectedDate, attendance, realStatus, profiles]);
 
-      // --- 排行榜數據計算邏輯 ---
+      // --- 純淨版榮耀殿堂資料計算 ---
       const leaderboardData = useMemo(() => {
+        const pastDates = practiceDates.filter(d => isDateLocked(d));
+        const sortedPastDates = [...pastDates].reverse();
+
         const stats = profiles.map(p => {
-          let attendCount = 0;
-          let lateCount = 0;
-          practiceDates.forEach(date => {
-            if (isDateLocked(date)) {
-              // 取得實際打卡結果
-              const key = `${p.name}_${date}`;
-              const actualStatus = realStatus[key];
-              const signIntent = attendance[key];
+          let a = 0;
+          let currentStreak = 0;
+          let streakBroken = false;
 
-              // 出席榜計算 (參加, 準時, 遲到)
-              if (['參加', '準時', '遲到'].includes(actualStatus) || (!actualStatus && ['參加', '準時', '遲到'].includes(signIntent))) {
-                attendCount++;
-              }
-
-              // 贊助榜計算：明確遲到，或者符合嚴謹缺席條件
-              const isPast = isDateStrictlyPast(date);
-              const hasSignedUp = ['參加', '準時', '遲到'].includes(signIntent);
-              const isNoRecord = !actualStatus || actualStatus === '未打卡';
-              
-              if (actualStatus === '遲到' || actualStatus === '缺席' || (isPast && hasSignedUp && isNoRecord)) {
-                lateCount++;
-              }
+          practiceDates.forEach(d => {
+            if (isDateLocked(d)) {
+              const s = getFinalStatus(p.name, d);
+              if (['參加', '準時', '遲到'].includes(s)) a++;
             }
           });
-          return { name: p.name, attendCount: attendCount || 0, lateCount: lateCount || 0 };
+
+          for (let d of sortedPastDates) {
+            const s = getFinalStatus(p.name, d);
+            if (['參加', '準時', '遲到'].includes(s)) {
+              if (!streakBroken) currentStreak++;
+            } else {
+              streakBroken = true;
+            }
+          }
+          return { name: p.name, attendCount: a, currentStreak };
         });
 
-        // 排名計算 (處理並列)
-        const calculateRank = (data, key) => {
-          const sorted = [...data]
-            .filter(item => item[key] > 0)
-            .sort((a, b) => b[key] - a[key]);
-          
-          let currentRank = 1;
-          return sorted.map((item, index) => {
-            const prevItem = sorted[index - 1];
-            if (index > 0 && prevItem && item[key] < prevItem[key]) {
-              currentRank = index + 1;
-            }
-            return { ...item, rank: currentRank };
+        const calcRank = (data, key) => {
+          const sorted = [...data].filter(i => i[key] > 0).sort((a, b) => b[key] - a[key]);
+          let r = 1;
+          return sorted.map((item, idx) => {
+            if (idx > 0 && item[key] < sorted[idx - 1][key]) r = idx + 1;
+            return { ...item, rank: r };
           });
         };
-
-        const lateRanked = calculateRank(stats, 'lateCount');
-        const attendRanked = calculateRank(stats, 'attendCount');
-
-        return {
-          attendance: attendRanked,
-          sponsor: lateRanked
-        };
+        return { attendance: calcRank(stats, 'attendCount') };
       }, [profiles, practiceDates, attendance, realStatus]);
 
-      // --- ★ 渲染元件：狀態 Badge (純 Icon 簡潔版) ---
+      // --- 渲染元件：狀態 Badge ---
       const StatusBadge = ({ name }) => {
+        const status = getFinalStatus(name, selectedDate);
+        if (status === '準時') {
+          return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+        }
+        if (status === '遲到') {
+          return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
+        }
+
+        // 新增的嚴謹缺席判斷邏輯
+        const isPast = () => {
+          try {
+            if (!selectedDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // 基準為今天的 00:00:00
+            const cleanDate = selectedDate.split('(')[0];
+            const [m, d] = cleanDate.split('/').map(n => parseInt(n, 10));
+            const year = today.getFullYear();
+            const targetDate = new Date(year, m - 1, d);
+            // 處理跨年的情況
+            if (today.getMonth() === 11 && m === 1) targetDate.setFullYear(year + 1);
+            return targetDate < today; // 必須是昨天或更早
+          } catch (e) { return false; }
+        };
+
         const key = `${name}_${selectedDate}`;
-        const actualStatus = realStatus[key];   
-        const signIntent = attendance[key];     
+        const intended = attendance[key];
+        const hasIntended = ['參加', '準時', '遲到'].includes(intended);
+        const actual = realStatus[key];
+        const noRecord = !actual || actual === '未打卡';
 
-        // 規則 1: 🟢 顯示「準時」或「參加」
-        if (actualStatus === '準時' || actualStatus === '參加') {
-          return <CheckCircle2 className="w-5 h-5 text-emerald-500 drop-shadow-sm" />;
+        // 條件：1.日期已過 2.有報名意願 3.無打卡紀錄
+        if (isPast() && hasIntended && noRecord) {
+          return (
+            <div className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-red-500">
+              <X className="w-3 h-3 text-red-500 stroke-[3px]" />
+            </div>
+          );
         }
 
-        // 規則 2: 🟠 顯示「遲到」 (橘黃色驚嘆號)
-        if (actualStatus === '遲到') {
-          return <AlertTriangle className="w-5 h-5 text-orange-500 drop-shadow-sm" />;
-        }
-
-        // 規則 3: 🔴 顯示「缺席」 (紅色叉叉)
-        // 後端判定 OR 前端嚴謹規則
-        const isPast = isDateStrictlyPast(selectedDate);
-        const hasSignedUp = ['參加', '準時', '遲到'].includes(signIntent);
-        const isNoRecord = !actualStatus || actualStatus === '未打卡';
-
-        if (actualStatus === '缺席' || (isPast && hasSignedUp && isNoRecord)) {
-          return <X className="w-5 h-5 text-red-500 drop-shadow-sm" />;
-        }
-
-        // 規則 4: ⚪ 不符合上述條件，保持空白乾淨
         return null;
-      };
-
-      // --- 渲染元件：榮耀殿堂 (出席榜) ---
-      const renderAttendanceBoard = () => {
-        // 取前 15 名
-        const top15List = leaderboardData.attendance.filter(p => p.rank <= 15);
-        const top3 = top15List.slice(0, 3);
-        const others = top15List.slice(3);
-
-        if (leaderboardData.attendance.length === 0) {
-           return <div className="text-center text-gray-500 py-10">目前沒有數據</div>;
-        }
-
-        return (
-          <div className="space-y-6 animate-slide-down pb-20">
-            {/* 前三名 */}
-            <div className="grid grid-cols-3 gap-2 items-end mb-8 pt-8 px-2">
-              {/* 第二名 */}
-              {top3[1] && (
-                <div className="bg-[#1C1F1E] border border-gray-700/50 rounded-xl p-3 flex flex-col items-center shadow-lg relative order-1 animate-pop-in" style={{animationDelay: '0.1s'}}>
-                  <div className="absolute -top-3 w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center border-2 border-[#1C1F1E] shadow-lg text-[10px] font-black text-black">2</div>
-                  <div className="mt-2 text-center w-full">
-                    <div className="text-xs font-bold truncate text-gray-300">{top3[1].name}</div>
-                    <div className="text-sm font-black text-emerald-500">{top3[1].attendCount}</div>
-                  </div>
-                </div>
-              )}
-              {/* 第一名 */}
-              {top3[0] && (
-                <div className="bg-gradient-to-b from-[#1C1F1E] to-[#064E3B] border border-emerald-500/50 rounded-xl p-4 flex flex-col items-center shadow-[0_0_30px_rgba(16,185,129,0.2)] relative order-2 transform -translate-y-4 z-10 animate-pop-in">
-                  <div className="absolute -top-5">
-                    <Crown className="w-8 h-8 text-yellow-400 drop-shadow-lg fill-yellow-400" />
-                  </div>
-                  <div className="mt-2 text-center w-full">
-                    <div className="text-base font-black truncate w-full text-white">{top3[0].name}</div>
-                    <div className="text-3xl font-black text-white mt-1">{top3[0].attendCount}</div>
-                  </div>
-                </div>
-              )}
-              {/* 第三名 */}
-              {top3[2] && (
-                <div className="bg-[#1C1F1E] border border-amber-900/50 rounded-xl p-3 flex flex-col items-center shadow-lg relative order-3 animate-pop-in" style={{animationDelay: '0.2s'}}>
-                  <div className="absolute -top-3 w-6 h-6 bg-amber-700 rounded-full flex items-center justify-center border-2 border-[#1C1F1E] shadow-lg text-[10px] font-black text-white">3</div>
-                  <div className="mt-2 text-center w-full">
-                    <div className="text-xs font-bold truncate text-gray-300">{top3[2].name}</div>
-                    <div className="text-sm font-black text-emerald-500">{top3[2].attendCount}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 4-15 名 */}
-            {others.length > 0 && (
-              <div className="bg-[#171C1A] border border-emerald-900/30 rounded-2xl overflow-hidden animate-pop-in" style={{animationDelay: '0.3s'}}>
-                <div className="px-4 py-3 bg-[#0d1f18] border-b border-emerald-900/30 flex justify-between items-center">
-                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">菁英榜 (Top 15)</span>
-                  <Trophy className="w-3 h-3 text-emerald-600" />
-                </div>
-                {others.map((item, idx) => (
-                  <div key={item.name} className="flex items-center justify-between p-4 border-b border-emerald-900/10 last:border-0 hover:bg-[#1a201e] transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-6 text-center font-bold text-gray-600 text-sm">#{item.rank}</div>
-                      <div className="font-bold text-gray-300">{item.name}</div>
-                    </div>
-                    <div className="font-bold text-emerald-500/80">{item.attendCount} <span className="text-[10px] text-gray-600 font-normal">次</span></div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      };
-
-      // --- 渲染元件：贊助榜 ---
-      const renderSponsorBoard = () => {
-        if (leaderboardData.sponsor.length === 0) {
-           return (
-             <div className="p-12 flex flex-col items-center justify-center text-center space-y-4 animate-pop-in">
-                <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mb-2">
-                   <Crown className="w-8 h-8 text-emerald-500" />
-                </div>
-                <div className="text-xl font-bold text-emerald-400">目前無人遲到！</div>
-                <div className="text-sm text-gray-500">大家都很準時，請繼續保持 👍</div>
-             </div>
-           );
-        }
-
-        return (
-          <div className="space-y-4 animate-slide-down pb-20">
-            <div className="text-center mb-6 pt-4">
-              <h2 className="text-xl font-black text-white drop-shadow-sm flex items-center justify-center gap-2">
-                <span className="text-orange-500">🏆</span> 感謝贊助天使 <span className="text-orange-500">🏆</span>
-              </h2>
-            </div>
-
-            <div className="bg-[#1C1815] border border-orange-900/30 rounded-2xl overflow-hidden animate-pop-in">
-              {leaderboardData.sponsor.map((item, idx) => (
-                <div key={item.name} className="flex items-center justify-between p-4 border-b border-orange-900/10 last:border-0 relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-orange-500/5 to-transparent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
-                  <div className="flex items-center gap-4 relative z-10 pl-2">
-                    <div className="font-bold text-gray-200 text-lg">{item.name}</div>
-                  </div>
-                  <div className="text-right relative z-10">
-                    <div className="flex items-center gap-1 text-yellow-500 font-black text-lg">
-                      <Coins className="w-3 h-3" />
-                      ${item.lateCount * 50}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="bg-gradient-to-r from-orange-900/30 to-amber-900/30 rounded-xl p-4 border border-orange-500/20 text-center animate-pop-in" style={{animationDelay: '0.2s'}}>
-              <div className="text-[10px] text-orange-400/70 font-bold uppercase mb-1 tracking-widest">目前累積隊費基金</div>
-              <div className="text-2xl font-black text-white text-shine">
-                $ {leaderboardData.sponsor.reduce((acc, curr) => acc + (curr.lateCount * 50), 0)}
-              </div>
-            </div>
-          </div>
-        );
       };
 
       // --- Loading 畫面 ---
@@ -800,6 +692,13 @@
                   <g fill="#01b1a5">
                     <path d="M125.5 68.9q3.6-.1 7.2.2c9.6 1.4 11 9.6 9.7 17.8l-2.2 13c-1.4 8.8-1.8 18.7-9.7 24.4a17 17 0 0 1-6 2.5c-2.5.4-6 .3-8.5.3h-11.4l1.5-8.5 2.7-16.4 5.7-33.3zm4.4 11c-1.8-1.1-3.2-1-5.3-.9l-4.6 26.6c-.6 3.5-1.2 7.6-1.9 11 2.3.1 3.7.3 5.7-.7 2.5-2.1 2.8-6 3.4-9.2l2-11.5q1-5.4 1.7-10.9.4-2.4-1-4.4M266.3 69a16 16 0 0 1 11.1 3c2.7 2.2 3.6 5.1 4 8.4a26 26 0 0 1-.1 5c-.5 4-1.5 8.5-2.2 12.6-2.2 13-2.6 27.6-19.3 28.9h-.2c-3.6.3-8.4-.5-11.2-3-5.8-5-4-13.3-2.8-20l1.6-9 1.4-8.3c1.7-10.3 7-16.8 17.7-17.6m-1 10.2c-1.5.5-3 1.3-3.6 2.9q-1.2 3.2-1.6 6.7-2 11-3.7 22.3c-.5 3.3.4 5.8 4.3 5.3 3-1 4-3.2 4.5-6.2q2.2-12.6 4.3-25.1c.5-3.4-.2-6.1-4.1-6M234 .1c10.5-1 16.6 4.4 15.4 15.1-1 8.3-2.7 16.6-3.8 24.8-1.3 10.2-5 17-15.7 18.5-7.5.4-14-1.6-15.3-10-.6-3.6.2-7.3.8-11l1.7-10.4C219 15.2 219 2.2 234 0m.6 10.1c-2.9.8-4 2.6-4.5 5.5-.8 4.8-1.6 9-2.3 13.9-.7 5.1-2.4 11.5-1.8 16.6.2 1.6 2.3 2 3.7 2q2.2-.4 3.4-2.5c1-2 4.7-25.9 5-29.6.1-1.1.3-2.7 0-3.8a3 3 0 0 0-1.7-1.8 4 4 0 0 0-1.8-.3M384.1 0c3.7-.2 7.8.2 10.7 2.6 5.8 4.8 3.9 13 2.9 19.3L396 32c-1.8 11.7-2.2 24.9-17.4 26.3-7.3.6-14-2.7-14.6-10.5-.2-6.1 1.3-12.7 2.3-18.7C368.4 16.6 368 1.8 384 0m-.4 10.3c-2.8.8-3.9 2.9-4.3 5.6l-4.2 27c-.5 3.5.3 5.5 4.2 5.3a5 5 0 0 0 3-2.5c1.2-2.6 5-26.5 5.2-30.2 0-1 .1-2.4-.2-3.3q-.5-1.2-1.6-1.7-1-.4-2.1-.2M300.5 69.8c2.7 0 5.3-.2 8 .3 10.3 2 9.6 11.8 7.9 19.8-1.1 5-3 9-7.4 12l.4 3.3q1.4 10.5 2.6 20.9H300l-1-9.3-1-11.9h-3.4l-.6 3.2c-.8 5.9-2.4 12-3 18h-12l3-17.7 6.9-38.6zm-1.7 9.8c-.8 5-2 10.5-2.6 15.4 2 0 4 .2 5.6-.8q1.9-1.6 2.5-4.1c.7-3.1 2.7-10.4-2.6-10.4zM19 1c5.9-.2 13.2-.4 18.8.2 9.4.9 9.9 10.8 8.4 18-1.2 6-2 10.3-7.4 14l3.3 24.4H30.4c-.4-2.6-.7-6.8-1-9.5l-1.3-12h-3.3l-3.3 21.5H10c.2-2.1.8-5.2 1.1-7.4l2-12.5zm9.9 9.9c-.4.6-2.2 13.3-2.5 15.3 2 0 3.8.3 5.6-.7 2.6-2.2 3-6.2 3.3-9.5.5-5.3-2.3-5.2-6.4-5.1M349 1q3.5-.2 6.7.1c9.8 1.3 9.9 10.4 8.5 18-1 5.9-2 10.3-7 14 0 2.3.7 6.5 1 9l2 15.4h-11.5l-1-10.1c-.5-3.4-.9-8-1.2-11.4h-3.3c-.8 6.9-2.1 14.6-3.2 21.5h-11l1-6.5 1.7-11.2 6-38.9zm3.2 10.3c-1.8-.6-3.2-.4-5-.4q-.8 4.4-1.5 9c-.2 1.7-.8 4.6-.9 6.2 2.2 0 4 .4 5.8-.9 2-2 2.3-4.9 2.7-7.5.3-2.2.6-4.6-1-6.4M49.7 68.9h15.1c0 19.3.7 38.9 1 58.2H53.6l.2-10h-8.9L42 127H30.1c2-6.4 4.6-13.8 6.8-20.2zm40 0c5.3 0 11.3-.4 15 4.4 3.6 5 2.4 12 1.2 17.8-1.7 8.7-2.2 18.3-5.5 26.5-1.1 2.7-3.4 5-5.6 6.7-5.5 3.2-8.8 2.8-14.9 2.8h-11c.6-5.6 2.2-13.5 3.2-19.2l6.7-39zM94.3 80c-1-1.3-4-1-5.5-1Q87.2 89 85.4 99l-3 17.7c2 0 3.7.2 5.6-.8 2.7-2.2 3-7 3.6-10.3l1.9-11.1.9-5.2c.4-2.6 1.6-6.8 0-9.2m-39.5 3.3a574 574 0 0 0-6.5 23.4H54l.6-15.3c0-1.6.4-6.8.2-8.1M298.5 1h34.7c-.7 3.3-1.2 7.3-1.7 10.7h-23.9L306 23.4c7.2.2 14.9 0 22.1 0l-1.5 10.4c-7.2.2-15 0-22.2 0l-.7 4.6-1.4 8.5h24.3l-1.6 10.6h-35.3c1-4.5 1.5-9.9 2.3-14.5 2.3-14 4.1-28.1 6.6-42M20.1 68.9c5 0 11.8-.6 15.7 3.2 4 4.1 3 11.2 2 16.3-.9 5-1.9 10.9-5.6 14.7-4.8 5-10.7 4.6-17 4.6l-.9 5.4c-.7 4.2-1.8 9.8-2.2 14H0L2.7 112l7.4-43zm6.4 12c-.6-2.4-4.6-2-6.4-1.9-.9 5.8-2.5 13-3 18.4 2 0 3.9.3 5.8-.7 1.7-1.5 2.3-3.9 2.6-6 .6-3.1 1.7-6.6 1-9.7M114.3.9h33.2q-1 5.4-1.7 10.6c-7.2.2-14.8 0-22 0-.7 3-1.4 8.7-2 12h20.3l-1.6 10.4h-20.3c-.5 2-.8 5-1.2 7l-.8 6h22.7l-1.6 10.7h-34zM92.9.1c5-.3 10.3.2 13.3 4.7 2.7 4.3 1.8 9.6.9 14.2q-5.4.1-11 .4c.5-2.2 2.3-9.3-1.9-9.4-3.2 0-4.8 3.9-4.6 6.7.3 3.3 2.6 5 5 7 4.6 3.6 9.5 7.2 9.6 13.6.2 10.9-4.2 20.6-16.2 21.2-4.5.1-9.3-.4-12.2-4.4-3.3-4.8-2-10.5-1-15.8q5.3-.1 10.9-.3-.7 3.3-.9 6.8c0 4.3 4.2 4.5 6.5 1.6 1.3-1.6 1.7-5.8.7-7.7-2.7-4.8-8.5-7-11.5-11.6-2.4-3.5-2.6-6.4-2.2-10.5C79.1 7.7 83.7 1.3 93 .1M180 68.9H205c-.2 2.5-1.3 8-1.8 10.8H190c-.7 3.6-1.5 8.4-2 12.1h11.4c-.4 3.4-1.2 7.2-1.8 10.6H186c-.6 4.3-1.6 9.4-2.3 13.8h14q-1 5.4-1.8 10.9h-25.9c.6-4.8 1.9-11.1 2.7-16l4.5-25.7zM414.4 69.8h25.2l-1.8 10.5c-4.1.2-9.2 0-13.4.1-.5 3.5-1.3 7.7-2 11.3H434L432 102h-11.5l-2.3 13.2h13.9c-.7 3.4-1.2 7.3-1.8 10.8h-25.9q1.4-9 3.2-18.1zM53.5.9h24l-1.7 10.7H63L61.2 23h11.1l-1.6 10.5H59.5l-2 13.2h13.2L69 57.6H44.5zM268.4 1h26c-.4 1.7-1 8.2-1.7 9.3-6.3 12.3-13.5 24.3-19.9 36.5 4.4.2 10.3 0 14.7 0L286 57.6q-13.4-.2-26.9 0c.3-1.6 1.2-8.6 1.7-9.7q9.7-18.1 19.9-36.1h-13.8c.3-3.4 1-7.4 1.6-10.8M223.2 69.8h25.5L247 80.3c-4.4.2-9.4 0-13.8.1l-2 11.8h11.7c-.4 3-1.2 7.5-1.8 10.5h-11.8l-.2 1.8-2.3 12.9-1.5 8.7h-12c1-6.7 2.4-13.8 3.6-20.5q3-18 6.4-35.8M384.9 69.8h25.6l-1.8 10.6H395c-.7 3.6-1.5 8.1-2 11.8h11.7c-.4 3.1-1.2 7.4-1.9 10.5H391l-.3 1.9-3.8 21.5h-12c1.6-7.7 3-16.4 4.3-24.2zM150.3 68.9H162c-2.9 15.6-5.3 31.6-8.1 47.3h13.9q-.9 5.4-1.8 10.9h-25.8c2.5-12.8 4.3-26 6.6-38.8q1.9-9.7 3.3-19.4M191.2.9h28.3c-.7 2.9-1.3 7.6-1.7 10.6h-8.6c-1.8 13-4.1 25.8-6 38.6l-1.2 7.5h-11.3l7.3-46h-8.5zM337.8 69.8h12c-3 15-5 30.6-8 45.4h14q-1 5.4-2 10.8c-1.4.2-6.6 0-8.2 0H328c1-6.7 2.4-13.8 3.6-20.5l3.9-22.3q1.3-6.7 2.3-13.4M149.7.9h28c-.1 2.8-1 7.8-1.6 10.7h-8.4l-6.1 38.8-1 7.2h-11.4l7.3-46H148c.6-3 1.3-7.6 1.7-10.7M367.5 69.8h11.8l-1 6.7-2.3 12.8c-2 12.1-4.2 24.7-6.4 36.8h-12l1.4-7.9L361 106zM436.4 113h11.5c-.6 4.2-1.5 8.8-2.2 13h-11.5c.8-3.8 1.5-9.1 2.2-13M397.3 44.8H408l-2 12.7h-11z"/></g>
                </svg>
+               
+               {/* 倒數計時 */}
+               <div className="text-center mt-6 animate-pop-in" style={{animationDelay: '0.2s'}}>
+                 <p className="text-sm tracking-widest text-[#C4F0ED]">
+                   距離端午節剩下 <span className="text-lg font-bold mx-1">{weeksToDragonBoat}</span> 週
+                 </p>
+               </div>
             </div>
           </div>
           <div className="flex-none pb-12 w-full text-center">
@@ -908,13 +807,26 @@
             {activeTab === 'signup' && (
               <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
                 <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/30 mb-8">
-                  <label className="text-[10px] font-bold text-emerald-500 uppercase block mb-2">代理人模式 (切換身份)</label>
-                  <div className="relative">
+                  <div className="relative mb-3">
                     <select value={proxyUser.name} onChange={(e) => setProxyUser(profiles.find(p => p.name === e.target.value))} className="w-full bg-[#0d1f18] border border-emerald-900/50 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none appearance-none">
                       {profiles.map(p => <option key={p.name} value={p.name}>{p.name}{p.name === currentUser.name ? ' (本人)' : ''}</option>)}
                     </select>
                     <ArrowRightLeft className="absolute right-4 top-3.5 w-4 h-4 text-emerald-500/50 pointer-events-none" />
                   </div>
+                  
+                  {/* 新增的代理人摘要統計區塊 */}
+                  {proxyUser && (
+                    <div className="bg-[#0d1f18]/50 rounded-xl p-3 border border-emerald-900/20 text-xs text-gray-400 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>你的下次訓練：<span className="text-emerald-400 font-bold">{proxyUserStats.nextDate}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Ship className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>今年已訓練 <span className="text-emerald-400 font-bold">{proxyUserStats.participated}</span> 次，目前報名出席 <span className="text-emerald-400 font-bold">{proxyUserStats.registered}</span> 次</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 月份 Tabs */}
@@ -982,19 +894,17 @@
                   <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/20"><div className="text-[10px] text-gray-500 font-bold mb-1">男生</div><div className="text-2xl font-black text-emerald-400">{dashboardStats.male}</div></div>
                   <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/20"><div className="text-[10px] text-gray-500 font-bold mb-1">女生</div><div className="text-2xl font-black text-emerald-400">{dashboardStats.female}</div></div>
                 </div>
+                
+                {/* Refresh 按鈕 */}
+                <div className="flex justify-end mb-2 px-1">
+                   <button onClick={handleRefresh} className="text-[10px] text-gray-500 flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
+                      <RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> 更新數據
+                   </button>
+                </div>
 
                 <div className="space-y-6">
                   {dashboardStats.manifest.Staff.length > 0 && (
-                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 relative">
-                      {/* Refresh 按鈕放置於區域右上角 */}
-                      <button 
-                        onClick={handleRefresh} 
-                        disabled={isRefreshing}
-                        className="absolute top-4 right-4 text-[10px] text-gray-400 flex items-center gap-1 hover:text-white transition-colors cursor-pointer bg-[#0d1f18] px-2 py-1 rounded-md border border-emerald-900/50"
-                      >
-                        <RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> 
-                        更新數據
-                      </button>
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
                       <div className="flex items-center gap-2 mb-3 text-emerald-400 text-[10px] font-bold uppercase"><Ship className="w-4 h-4" /> 舵手與鼓手</div>
                       <div className="grid grid-cols-2 gap-3">
                         {dashboardStats.manifest.Staff.map(p => (
@@ -1023,53 +933,87 @@
               </div>
             )}
 
-            {/* 分頁 3: 排行榜 (整合新介面) */}
+            {/* 分頁 3: 榮耀殿堂 */}
             {activeTab === 'leaderboard' && (
               <div className="animate-in fade-in slide-in-from-bottom-3 duration-500">
-                <div className="bg-[#171C1A] p-1 rounded-xl flex gap-1 mb-8 border border-emerald-900/30">
-                  <button 
-                    onClick={() => setLeaderboardTab('attendance')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      leaderboardTab === 'attendance' 
-                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' 
-                        : 'text-gray-500 hover:text-emerald-500'
-                    }`}
-                  >
-                    <Trophy className="w-3 h-3" /> 榮耀殿堂
-                  </button>
-                  <button 
-                    onClick={() => setLeaderboardTab('sponsor')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      leaderboardTab === 'sponsor' 
-                        ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/50' 
-                        : 'text-gray-500 hover:text-orange-500'
-                    }`}
-                  >
-                    <Coins className="w-3 h-3" /> 贊助榜
-                  </button>
-                </div>
-
                 <div className="min-h-[400px]">
-                  {!unlockedStatus[leaderboardTab] ? (
-                    <div className="flex flex-col items-center justify-center py-16 space-y-8 animate-in fade-in zoom-in duration-500">
-                      <ChargeButton 
-                        onClick={handleCharge} 
-                        progress={energy} 
-                        theme={THEMES[leaderboardTab]}
-                        icon={leaderboardTab === 'attendance' ? Zap : Coins}
-                      />
-                      <div className="text-center space-y-1">
-                        <p className="text-white font-bold text-lg tracking-wide">
-                          {leaderboardTab === 'attendance' ? "揭曉划船王" : "揭曉贊助榜"}
-                        </p>
-                        <p className="text-xs text-gray-500 font-medium">
-                          點擊按鈕注入能量 ({energy}%)
-                        </p>
+                  {(() => {
+                    const top15List = leaderboardData.attendance.filter(p => p.rank <= 15);
+                    const top3 = top15List.slice(0, 3);
+                    const others = top15List.slice(3);
+
+                    if (leaderboardData.attendance.length === 0) {
+                       return <div className="text-center text-gray-500 py-10 mt-10">目前無數據</div>;
+                    }
+
+                    return (
+                      <div className="space-y-8 pb-20 pt-6">
+
+                        {/* 抽卡前三名 */}
+                        <div className="grid grid-cols-3 gap-3 px-2 items-end">
+                          {top3[1] && <FlipCard rank={2} player={top3[1]} isFlipped={flippedCards[1]} onFlip={() => setFlippedCards(p => ({...p, 1: true}))} delay="0.1s" />}
+                          <div className="transform -translate-y-4 z-10">
+                            {top3[0] && <FlipCard rank={1} player={top3[0]} isFlipped={flippedCards[0]} onFlip={() => { setFlippedCards(p => ({...p, 0: true})); setShowConfetti(true); setTimeout(() => setShowConfetti(false), 3000); }} delay="0s" />}
+                          </div>
+                          {top3[2] && <FlipCard rank={3} player={top3[2]} isFlipped={flippedCards[2]} onFlip={() => setFlippedCards(p => ({...p, 2: true}))} delay="0.2s" />}
+                        </div>
+
+                        {/* 菁英榜單 (TOP 15) */}
+                        {others.length > 0 && (
+                          <div className="bg-[#171C1A] border border-emerald-900/30 rounded-2xl overflow-hidden animate-slide-down" style={{animationDelay: '0.4s'}}>
+                             <div className="px-4 py-3 bg-[#0d1f18] border-b border-emerald-900/30 flex justify-between items-center">
+                               <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">派兜寶貝 TOP 15</span>
+                             </div>
+                             <div className="divide-y divide-emerald-900/10">
+                               {others.map((item) => {
+                                 const flameCount = item.currentStreak >= 10 ? 3 : item.currentStreak >= 5 ? 2 : item.currentStreak >= 3 ? 1 : 0;
+                                 
+                                 return (
+                                   <div key={item.name} className="flex items-center justify-between p-4 hover:bg-[#1C2220] transition-colors">
+                                     <div className="flex items-center gap-4">
+                                       <div className="w-5 text-center font-bold text-gray-600 text-sm">#{item.rank}</div>
+                                       <div className="flex flex-col">
+                                          <div className="flex items-center gap-1.5">
+                                             <span className="font-bold text-gray-200 text-sm">{item.name}</span>
+                                             {/* 火焰連勝標記 */}
+                                             {flameCount > 0 && (
+                                               <div className="flex items-center gap-[1px]" title={`連續出席 ${item.currentStreak} 次`}>
+                                                 {Array.from({ length: flameCount }).map((_, i) => (
+                                                   <Flame key={i} className="w-3.5 h-3.5 text-orange-500 fill-orange-500 animate-pulse" />
+                                                 ))}
+                                               </div>
+                                             )}
+                                          </div>
+                                       </div>
+                                     </div>
+                                     <div className="font-black text-emerald-500/90 text-lg">{item.attendCount} <span className="text-[10px] text-gray-600 font-normal">次</span></div>
+                                   </div>
+                                 );
+                               })}
+                             </div>
+                             {/* 備註區域 */}
+                             <div className="bg-[#0d1f18]/50 border-t border-emerald-900/30 px-4 py-4 flex flex-col items-center gap-2">
+                               <div className="text-[10px] text-emerald-600/70 font-bold tracking-widest">備註：火焰代表連續出席次數</div>
+                               <div className="flex flex-wrap justify-center gap-4 text-[10px] text-gray-500 font-medium">
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex"><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/></div>
+                                    <span>3次以上</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex"><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/></div>
+                                    <span>5次以上</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex"><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/><Flame className="w-3 h-3 text-orange-500 fill-orange-500"/></div>
+                                    <span>10次以上</span>
+                                  </div>
+                               </div>
+                             </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ) : (
-                    leaderboardTab === 'attendance' ? renderAttendanceBoard() : renderSponsorBoard()
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             )}
