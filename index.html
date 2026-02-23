@@ -446,6 +446,7 @@
         }
       };
 
+      // 檢查日期是否鎖定（<=今天）
       const isDateLocked = (dateStr) => {
         try {
           const today = new Date();
@@ -456,6 +457,21 @@
           const targetDate = new Date(year, m - 1, d);
           if (today.getMonth() === 11 && m === 1) targetDate.setFullYear(year + 1);
           return targetDate <= today;
+        } catch (e) { return false; }
+      };
+
+      // ★ 判斷日期是否嚴格為「過去」(昨天或更早)，用於缺席判定
+      const isDateStrictlyPast = (dateStr) => {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const cleanDate = dateStr.split('(')[0];
+          const [m, d] = cleanDate.split('/').map(n => parseInt(n, 10));
+          const year = today.getFullYear();
+          const targetDate = new Date(year, m - 1, d);
+          if (today.getMonth() === 11 && m === 1) targetDate.setFullYear(year + 1);
+          if (today.getMonth() === 0 && m === 12) targetDate.setFullYear(year - 1);
+          return targetDate < today; // 嚴格小於今天
         } catch (e) { return false; }
       };
 
@@ -552,7 +568,7 @@
       };
 
       const isConsideredAttending = (status) => {
-        return ['參加', '準時', '遲到', '未打卡'].includes(status);
+        return ['參加', '準時', '遲到', '未打卡', '缺席'].includes(status);
       };
 
       const dashboardStats = useMemo(() => {
@@ -577,9 +593,24 @@
           let lateCount = 0;
           practiceDates.forEach(date => {
             if (isDateLocked(date)) {
-              const status = getFinalStatus(p.name, date);
-              if (['參加', '準時', '遲到'].includes(status)) attendCount++;
-              if (status === '遲到') lateCount++;
+              // 取得實際打卡結果
+              const key = `${p.name}_${date}`;
+              const actualStatus = realStatus[key];
+              const signIntent = attendance[key];
+
+              // 出席榜計算 (參加, 準時, 遲到)
+              if (['參加', '準時', '遲到'].includes(actualStatus) || (!actualStatus && ['參加', '準時', '遲到'].includes(signIntent))) {
+                attendCount++;
+              }
+
+              // 贊助榜計算：明確遲到，或者符合嚴謹缺席條件
+              const isPast = isDateStrictlyPast(date);
+              const hasSignedUp = ['參加', '準時', '遲到'].includes(signIntent);
+              const isNoRecord = !actualStatus || actualStatus === '未打卡';
+              
+              if (actualStatus === '遲到' || actualStatus === '缺席' || (isPast && hasSignedUp && isNoRecord)) {
+                lateCount++;
+              }
             }
           });
           return { name: p.name, attendCount: attendCount || 0, lateCount: lateCount || 0 };
@@ -610,33 +641,42 @@
         };
       }, [profiles, practiceDates, attendance, realStatus]);
 
-      // --- 渲染元件：狀態 Badge ---
+      // --- ★ 渲染元件：狀態 Badge (純 Icon 簡潔版) ---
       const StatusBadge = ({ name }) => {
-        const status = getFinalStatus(name, selectedDate);
-        if (status === '準時') {
-          return (
-            <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500/20 rounded-md border border-emerald-500/30">
-              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-              <span className="text-xs font-bold text-emerald-400">準時</span>
-            </div>
-          );
+        const key = `${name}_${selectedDate}`;
+        const actualStatus = realStatus[key];   
+        const signIntent = attendance[key];     
+
+        // 規則 1: 🟢 顯示「準時」或「參加」
+        if (actualStatus === '準時' || actualStatus === '參加') {
+          return <CheckCircle2 className="w-5 h-5 text-emerald-500 drop-shadow-sm" />;
         }
-        if (status === '遲到') {
-          return (
-            <div className="flex items-center gap-1 px-2 py-1 bg-orange-500/20 rounded-md border border-orange-500/30">
-              <Frown className="w-3 h-3 text-orange-500" />
-              <span className="text-xs font-bold text-orange-400">遲到</span>
-            </div>
-          );
+
+        // 規則 2: 🟠 顯示「遲到」 (橘黃色驚嘆號)
+        if (actualStatus === '遲到') {
+          return <AlertTriangle className="w-5 h-5 text-orange-500 drop-shadow-sm" />;
         }
+
+        // 規則 3: 🔴 顯示「缺席」 (紅色叉叉)
+        // 後端判定 OR 前端嚴謹規則
+        const isPast = isDateStrictlyPast(selectedDate);
+        const hasSignedUp = ['參加', '準時', '遲到'].includes(signIntent);
+        const isNoRecord = !actualStatus || actualStatus === '未打卡';
+
+        if (actualStatus === '缺席' || (isPast && hasSignedUp && isNoRecord)) {
+          return <X className="w-5 h-5 text-red-500 drop-shadow-sm" />;
+        }
+
+        // 規則 4: ⚪ 不符合上述條件，保持空白乾淨
         return null;
       };
 
       // --- 渲染元件：榮耀殿堂 (出席榜) ---
       const renderAttendanceBoard = () => {
-        const top10List = leaderboardData.attendance.filter(p => p.rank <= 10);
-        const top3 = top10List.slice(0, 3);
-        const others = top10List.slice(3);
+        // 取前 15 名
+        const top15List = leaderboardData.attendance.filter(p => p.rank <= 15);
+        const top3 = top15List.slice(0, 3);
+        const others = top15List.slice(3);
 
         if (leaderboardData.attendance.length === 0) {
            return <div className="text-center text-gray-500 py-10">目前沒有數據</div>;
@@ -662,8 +702,7 @@
                   <div className="absolute -top-5">
                     <Crown className="w-8 h-8 text-yellow-400 drop-shadow-lg fill-yellow-400" />
                   </div>
-                  <div className="mt-4 text-center w-full">
-                    <div className="text-[10px] text-yellow-400 font-black tracking-widest uppercase mb-1">MVP</div>
+                  <div className="mt-2 text-center w-full">
                     <div className="text-base font-black truncate w-full text-white">{top3[0].name}</div>
                     <div className="text-3xl font-black text-white mt-1">{top3[0].attendCount}</div>
                   </div>
@@ -681,11 +720,11 @@
               )}
             </div>
 
-            {/* 4-10 名 */}
+            {/* 4-15 名 */}
             {others.length > 0 && (
               <div className="bg-[#171C1A] border border-emerald-900/30 rounded-2xl overflow-hidden animate-pop-in" style={{animationDelay: '0.3s'}}>
                 <div className="px-4 py-3 bg-[#0d1f18] border-b border-emerald-900/30 flex justify-between items-center">
-                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">菁英榜 (Top 10)</span>
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">菁英榜 (Top 15)</span>
                   <Trophy className="w-3 h-3 text-emerald-600" />
                 </div>
                 {others.map((item, idx) => (
@@ -943,17 +982,19 @@
                   <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/20"><div className="text-[10px] text-gray-500 font-bold mb-1">男生</div><div className="text-2xl font-black text-emerald-400">{dashboardStats.male}</div></div>
                   <div className="bg-[#171C1A] p-4 rounded-2xl border border-emerald-900/20"><div className="text-[10px] text-gray-500 font-bold mb-1">女生</div><div className="text-2xl font-black text-emerald-400">{dashboardStats.female}</div></div>
                 </div>
-                
-                {/* Refresh 按鈕移至此處 */}
-                <div className="flex justify-end mb-2 px-1">
-                   <button onClick={handleRefresh} className="text-[10px] text-gray-500 flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                      <RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> 更新數據
-                   </button>
-                </div>
 
                 <div className="space-y-6">
                   {dashboardStats.manifest.Staff.length > 0 && (
-                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5">
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 relative">
+                      {/* Refresh 按鈕放置於區域右上角 */}
+                      <button 
+                        onClick={handleRefresh} 
+                        disabled={isRefreshing}
+                        className="absolute top-4 right-4 text-[10px] text-gray-400 flex items-center gap-1 hover:text-white transition-colors cursor-pointer bg-[#0d1f18] px-2 py-1 rounded-md border border-emerald-900/50"
+                      >
+                        <RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> 
+                        更新數據
+                      </button>
                       <div className="flex items-center gap-2 mb-3 text-emerald-400 text-[10px] font-bold uppercase"><Ship className="w-4 h-4" /> 舵手與鼓手</div>
                       <div className="grid grid-cols-2 gap-3">
                         {dashboardStats.manifest.Staff.map(p => (
